@@ -1,20 +1,98 @@
-from ultralytics import YOLO
+import numpy as np
+
+def compute_iou(box1, box2):
+    """Computes IOU between two bboxes [x1, y1, x2, y2]."""
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+    
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    
+    return intersection / float(area1 + area2 - intersection + 1e-6)
 
 class FaceTracker:
-    def __init__(self, model_path="yolov8n.pt"):
-        self.model = YOLO(model_path)
+    def __init__(self):
+        self.next_id = 0
+        self.tracks = {} # id -> {bbox, landmarks, last_seen, hits}
+        self.max_lost = 30 # frames
 
-    def track(self, frame, persist=True):
-        # Ultralytics has built-in tracking. 
-        # It's better to use it directly on the frame.
-        results = self.model.track(frame, persist=persist, tracker="bytetrack.yaml", verbose=False)
+    def track(self, frame, detections):
+        """
+        Updates tracks with new detections using IOU matching.
+        detections: list of {"bbox": [x1,y1,x2,y2], "landmarks": [...], "confidence": ...}
+        """
+        new_tracks = {}
+        
+        # 1. Match current tracks with new detections
+        if not self.tracks:
+            for det in detections:
+                new_tracks[self.next_id] = {
+                    "bbox": det["bbox"],
+                    "landmarks": det["landmarks"],
+                    "lost": 0
+                }
+                self.next_id += 1
+        else:
+            track_ids = list(self.tracks.keys())
+            track_bboxes = [self.tracks[tid]["bbox"] for tid in track_ids]
+            
+            det_bboxes = [det["bbox"] for det in detections]
+            
+            # Simple greedy IOU matching
+            matched_dets = set()
+            matched_tracks = set()
+            
+            for tid_idx, t_bbox in enumerate(track_bboxes):
+                best_iou = 0
+                best_det_idx = -1
+                for d_idx, d_bbox in enumerate(det_bboxes):
+                    if d_idx in matched_dets: continue
+                    iou = compute_iou(t_bbox, d_bbox)
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_det_idx = d_idx
+                
+                if best_iou > 0.3: # IOU threshold
+                    matched_tracks.add(tid_idx)
+                    matched_dets.add(best_det_idx)
+                    tid = track_ids[tid_idx]
+                    det = detections[best_det_idx]
+                    new_tracks[tid] = {
+                        "bbox": det["bbox"],
+                        "landmarks": det["landmarks"],
+                        "lost": 0
+                    }
+            
+            # 2. Handle unmatched tracks (increment lost)
+            for tid_idx, tid in enumerate(track_ids):
+                if tid_idx not in matched_tracks:
+                    track = self.tracks[tid]
+                    track["lost"] += 1
+                    if track["lost"] <= self.max_lost:
+                        new_tracks[tid] = track
+            
+            # 3. Handle unmatched detections (new tracks)
+            for d_idx, det in enumerate(detections):
+                if d_idx not in matched_dets:
+                    new_tracks[self.next_id] = {
+                        "bbox": det["bbox"],
+                        "landmarks": det["landmarks"],
+                        "lost": 0
+                    }
+                    self.next_id += 1
+        
+        self.tracks = new_tracks
+        
+        # Return format for pipeline
         tracked_objects = []
-        if results and results[0].boxes.id is not None:
-            boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
-            ids = results[0].boxes.id.cpu().numpy().astype(int)
-            for box, obj_id in zip(boxes, ids):
+        for tid, data in self.tracks.items():
+            if data["lost"] == 0:
                 tracked_objects.append({
-                    "bbox": box.tolist(),
-                    "id": int(obj_id)
+                    "id": tid,
+                    "bbox": data["bbox"],
+                    "landmarks": data.get("landmarks")
                 })
         return tracked_objects

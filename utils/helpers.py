@@ -62,3 +62,19 @@ class Helpers:
                         shutil.rmtree(file_path)
                 except Exception as e:
                     print(f'Failed to delete {file_path}. Reason: {e}')
+
+    @staticmethod
+    def is_blurry(image, threshold=30):
+        """Checks if an image is blurry using Laplacian variance."""
+        if image is None or image.size == 0: return True
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+        return variance < threshold
+
+    @staticmethod
+    def is_exposure_okay(image, min_brightness=40, max_brightness=220):
+        """Checks if an image is too dark or overexposed."""
+        if image is None or image.size == 0: return False
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        brightness = gray.mean()
+        return min_brightness < brightness < max_brightness

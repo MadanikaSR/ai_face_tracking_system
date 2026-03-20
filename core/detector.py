@@ -1,30 +1,46 @@
-from ultralytics import YOLO
 import cv2
+import os
+from core.scrfd_detector import SCRFD
 
 class FaceDetector:
-    def __init__(self, model_path="yolov8n-face.pt"):
-        # For our purposes, we'll use the default YOLOv8n or a face-specific model if available.
-        # Ultralytics provides several models. Let's use 'yolov8n.pt' and filter for faces or a pre-trained face model.
-        # There's a popular 'yolov8n-face.pt' model on HuggingFace, but here we'll assume a standard ultralytics usage.
-        self.model = YOLO("yolov8n.pt") 
+    def __init__(self, model_path="models/scrfd_500m_bnkps.onnx"):
+        self.detector = SCRFD(model_path)
 
-    def detect(self, frame):
-        # We'll filter for person (class 0) if using standard YOLOv8, 
-        # or just use the model if it's a dedicated face model.
-        # Many users use yolov8n-face.pt for this.
-        results = self.model(frame, verbose=False)
+    def detect(self, frame, logger=None):
+        raw_detections = self.detector.detect(frame)
         detections = []
-        for r in results:
-            for box in r.boxes:
-                # If using standard YOLO, class 0 is person. 
-                # For face tracking, we'd ideally use a face-specific model.
-                cls = int(box.cls[0])
-                conf = float(box.conf[0])
-                if conf > 0.5:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    detections.append({
-                        "bbox": [x1, y1, x2, y2],
-                        "confidence": conf,
-                        "class": cls
-                    })
+        
+        # Filtering parameters
+        MIN_CONFIDENCE = 0.6
+        MIN_SIZE = 30
+        
+        for det in raw_detections:
+            conf = det["confidence"]
+            bbox = det["bbox"] # [x1, y1, x2, y2]
+            landmarks = det["landmarks"]
+            
+            x1, y1, x2, y2 = bbox
+            width = x2 - x1
+            height = y2 - y1
+            
+            # Simple shape filtering
+            aspect_ratio = max(width, height) / max(min(width, height), 1)
+            
+            if conf < MIN_CONFIDENCE:
+                if logger: logger.debug(f"Rejected: low confidence ({conf:.2f})")
+                continue
+            if width < MIN_SIZE or height < MIN_SIZE:
+                if logger: logger.debug(f"Rejected: too small ({width}x{height})")
+                continue
+            if aspect_ratio > 1.5:
+                if logger: logger.debug(f"Rejected: invalid aspect ratio ({aspect_ratio:.2f})")
+                continue
+                
+            detections.append({
+                "bbox": bbox,
+                "confidence": conf,
+                "landmarks": landmarks,
+                "class": 0 # Face
+            })
+            
         return detections
