@@ -1,0 +1,7 @@
+ultralytics
+onnxruntime
+opencv-python
+numpy
+Pillow
+scikit-learn
+streamlit
