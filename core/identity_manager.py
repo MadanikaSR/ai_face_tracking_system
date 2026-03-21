@@ -35,33 +35,36 @@ class IdentityManager:
         max_global_sim = -1.0
         
         for face_id, gallery in self.registered_faces.items():
-            if face_id in forbidden_ids: continue
-            
             # 1. Similarity Search
             similarities = [self.recognizer.compare_embeddings(embedding, g_emb) for g_emb in gallery]
             face_max_sim = max(similarities) if similarities else 0.0
             
-            # 2. Spatiotemporal Bias (Lower threshold for nearby re-appearance)
+            # 2. Spatiotemporal Bias
             effective_threshold = self.recognition_threshold
             if current_bbox and face_id in self.recent_exits:
                 exit_data = self.recent_exits[face_id]
                 dist = self._get_bbox_dist(current_bbox, exit_data["bbox"])
-                time_diff = time.time() - exit_data["time"]
-                
-                # If appeared within 500px and 10s of an exit
-                if dist < 500 and time_diff < 10:
-                    effective_threshold -= 0.1 # Lower threshold to 0.45
+                if dist < 500 and (time.time() - exit_data["time"]) < 10:
+                    effective_threshold -= 0.1
             
             if face_max_sim > effective_threshold and face_max_sim > max_global_sim:
-                max_global_sim = face_max_sim
-                best_match_id = face_id
+                if face_id not in forbidden_ids: # STRICT CCTV ENFORCEMENT
+                    max_global_sim = face_max_sim
+                    best_match_id = face_id
+                else:
+                    # Match found but already taken this frame. 
+                    # We continue searching to see if they match ANOTHER person 
+                    # (very unlikely) or we eventually register a new ID.
+                    pass
 
+        # DUPLICATE PREVENTION: 
+        # If the best match is already "locked" by another track in this frame,
+        # return it but don't register it as a NEW face.
         if best_match_id:
-            if 0.6 < max_global_sim < 0.85 and len(self.registered_faces[best_match_id]) < self.max_gallery_size:
-                self.registered_faces[best_match_id].append(embedding)
-                self.db.add_embedding(best_match_id, embedding.tobytes())
+            # We return it even if forbidden, the pipeline will decide not to log it.
             return best_match_id, max_global_sim
         else:
+            # Only register a new face if truly no match found
             new_id = f"Face_{int(time.time())}_{len(self.registered_faces)}"
             self.db.add_face(new_id, embedding.tobytes())
             self.registered_faces[new_id] = [embedding]

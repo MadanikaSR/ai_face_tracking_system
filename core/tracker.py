@@ -14,7 +14,7 @@ def compute_iou(box1, box2):
     return intersection / float(area1 + area2 - intersection + 1e-6)
 
 class FaceTracker:
-    def __init__(self, max_lost=30):
+    def __init__(self, max_lost=90):
         self.next_id = 0
         self.tracks = {} # id -> {bbox, landmarks, lost}
         self.max_lost = max_lost # Persistent tracking across lost frames
