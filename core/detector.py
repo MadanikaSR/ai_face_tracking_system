@@ -10,9 +10,9 @@ class FaceDetector:
         raw_detections = self.detector.detect(frame)
         detections = []
         
-        # Filtering parameters
-        MIN_CONFIDENCE = 0.6
-        MIN_SIZE = 30
+        # Filtering parameters - Relaxed for partial faces (purdha/mask)
+        MIN_CONFIDENCE = 0.5
+        MIN_SIZE = 20
         
         for det in raw_detections:
             conf = det["confidence"]
@@ -23,7 +23,7 @@ class FaceDetector:
             width = x2 - x1
             height = y2 - y1
             
-            # Simple shape filtering
+            # Relaxed shape filtering for partial faces
             aspect_ratio = max(width, height) / max(min(width, height), 1)
             
             if conf < MIN_CONFIDENCE:
@@ -32,7 +32,7 @@ class FaceDetector:
             if width < MIN_SIZE or height < MIN_SIZE:
                 if logger: logger.debug(f"Rejected: too small ({width}x{height})")
                 continue
-            if aspect_ratio > 1.5:
+            if aspect_ratio > 2.0: # Increased from 1.5 to support partial boxes
                 if logger: logger.debug(f"Rejected: invalid aspect ratio ({aspect_ratio:.2f})")
                 continue
                 

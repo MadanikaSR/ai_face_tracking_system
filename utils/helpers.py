@@ -33,15 +33,13 @@ class Helpers:
         """Draws bounding boxes and labels on the frame."""
         for obj in tracked_objects:
             bbox = obj["bbox"]
-            obj_id = obj["id"]
-            name = recognitions.get(obj_id, f"ID: {obj_id}")
+            track_id = obj["id"]
+            face_id = recognitions.get(track_id, "Unknown")
+            sim = confidences.get(track_id, 0.0) if confidences else 0.0
             
-            # Get confidence score if provided
-            conf_str = ""
-            if confidences and obj_id in confidences:
-                conf_str = f" ({confidences[obj_id]:.2f})"
-            
-            label = f"{name}{conf_str}"
+            label = f"T:{track_id} F:{face_id}"
+            if 0 < sim < 1.0:
+                label += f" ({sim:.2f})"
             
             x1, y1, x2, y2 = bbox
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)

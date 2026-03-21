@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import numpy as np
 from datetime import datetime
 
 class Database:
@@ -13,13 +14,21 @@ class Database:
     def _create_tables(self):
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            # faces table: id, embedding (blob), first_seen, last_seen
+            # faces table: id, first_seen, last_seen (Removed blob embedding from here)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS faces (
                     id TEXT PRIMARY KEY,
-                    embedding BLOB,
                     first_seen TIMESTAMP,
                     last_seen TIMESTAMP
+                )
+            ''')
+            # NEW face_embeddings table: id, face_id, embedding
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS face_embeddings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    face_id TEXT,
+                    embedding BLOB,
+                    FOREIGN KEY (face_id) REFERENCES faces (id)
                 )
             ''')
             # events table: id, face_id, event_type, timestamp, image_path
@@ -36,13 +45,32 @@ class Database:
             conn.commit()
 
     def add_face(self, face_id, embedding):
+        """Adds a new face or updates an existing one with a new embedding."""
         now = datetime.now().isoformat()
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            # 1. Update faces table
             cursor.execute('''
-                INSERT OR IGNORE INTO faces (id, embedding, first_seen, last_seen)
-                VALUES (?, ?, ?, ?)
-            ''', (face_id, embedding, now, now))
+                INSERT INTO faces (id, first_seen, last_seen)
+                VALUES (?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen
+            ''', (face_id, now, now))
+            
+            # 2. Add embedding to gallery
+            cursor.execute('''
+                INSERT INTO face_embeddings (face_id, embedding)
+                VALUES (?, ?)
+            ''', (face_id, embedding))
+            conn.commit()
+
+    def add_embedding(self, face_id, embedding):
+        """Adds an additional embedding to an existing face's gallery."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO face_embeddings (face_id, embedding)
+                VALUES (?, ?)
+            ''', (face_id, embedding))
             conn.commit()
 
     def update_face_last_seen(self, face_id):
@@ -55,10 +83,19 @@ class Database:
             conn.commit()
 
     def get_all_faces(self):
+        """Returns a dict of face_id -> list of embeddings (numpy arrays)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT id, embedding FROM faces')
-            return cursor.fetchall()
+            # Get all embeddings joined with their face_id
+            cursor.execute('SELECT face_id, embedding FROM face_embeddings')
+            rows = cursor.fetchall()
+            
+            gallery = {}
+            for face_id, emb_blob in rows:
+                if face_id not in gallery:
+                    gallery[face_id] = []
+                gallery[face_id].append(np.frombuffer(emb_blob, dtype=np.float32))
+            return gallery
 
     def log_event(self, face_id, event_type, image_path):
         now = datetime.now().isoformat()
@@ -81,5 +118,6 @@ class Database:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM events')
+            cursor.execute('DELETE FROM face_embeddings')
             cursor.execute('DELETE FROM faces')
             conn.commit()

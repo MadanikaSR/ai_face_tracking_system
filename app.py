@@ -93,10 +93,10 @@ def main():
             tracked_objects, recognitions, confidences = pipeline.process_frame(frame, frame_count)
             
             # Draw detections
-            display_frame = Helpers.draw_detections(frame.copy(), tracked_objects, recognitions, confidences)
+            Helpers.draw_detections(frame, tracked_objects, recognitions, confidences)
             
             # Show output
-            cv2.imshow("AI Face Tracking System", display_frame)
+            cv2.imshow("AI Face Tracking System", frame)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break

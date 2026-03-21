@@ -14,10 +14,10 @@ def compute_iou(box1, box2):
     return intersection / float(area1 + area2 - intersection + 1e-6)
 
 class FaceTracker:
-    def __init__(self):
+    def __init__(self, max_lost=30):
         self.next_id = 0
-        self.tracks = {} # id -> {bbox, landmarks, last_seen, hits}
-        self.max_lost = 30 # frames
+        self.tracks = {} # id -> {bbox, landmarks, lost}
+        self.max_lost = max_lost # Persistent tracking across lost frames
 
     def track(self, frame, detections):
         """
@@ -25,68 +25,55 @@ class FaceTracker:
         detections: list of {"bbox": [x1,y1,x2,y2], "landmarks": [...], "confidence": ...}
         """
         new_tracks = {}
+        track_ids = list(self.tracks.keys())
         
         # 1. Match current tracks with new detections
-        if not self.tracks:
-            for det in detections:
+        matched_dets = set()
+        matched_tracks = set()
+        
+        if track_ids:
+            for tid_idx, tid in enumerate(track_ids):
+                t_bbox = self.tracks[tid]["bbox"]
+                best_iou = 0
+                best_det_idx = -1
+                
+                for d_idx, det in enumerate(detections):
+                    if d_idx in matched_dets: continue
+                    iou = compute_iou(t_bbox, det["bbox"])
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_det_idx = d_idx
+                
+                if best_iou > 0.3: # Match found
+                    matched_tracks.add(tid)
+                    matched_dets.add(best_det_idx)
+                    new_tracks[tid] = {
+                        "bbox": detections[best_det_idx]["bbox"],
+                        "landmarks": detections[best_det_idx]["landmarks"],
+                        "lost": 0
+                    }
+        
+        # 2. Handle unmatched tracks (keep them alive if lost < max_lost)
+        for tid in track_ids:
+            if tid not in matched_tracks:
+                track = self.tracks[tid]
+                track["lost"] += 1
+                if track["lost"] <= self.max_lost:
+                    new_tracks[tid] = track
+        
+        # 3. Handle unmatched detections (new tracks)
+        for d_idx, det in enumerate(detections):
+            if d_idx not in matched_dets:
                 new_tracks[self.next_id] = {
                     "bbox": det["bbox"],
                     "landmarks": det["landmarks"],
                     "lost": 0
                 }
                 self.next_id += 1
-        else:
-            track_ids = list(self.tracks.keys())
-            track_bboxes = [self.tracks[tid]["bbox"] for tid in track_ids]
-            
-            det_bboxes = [det["bbox"] for det in detections]
-            
-            # Simple greedy IOU matching
-            matched_dets = set()
-            matched_tracks = set()
-            
-            for tid_idx, t_bbox in enumerate(track_bboxes):
-                best_iou = 0
-                best_det_idx = -1
-                for d_idx, d_bbox in enumerate(det_bboxes):
-                    if d_idx in matched_dets: continue
-                    iou = compute_iou(t_bbox, d_bbox)
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_det_idx = d_idx
-                
-                if best_iou > 0.3: # IOU threshold
-                    matched_tracks.add(tid_idx)
-                    matched_dets.add(best_det_idx)
-                    tid = track_ids[tid_idx]
-                    det = detections[best_det_idx]
-                    new_tracks[tid] = {
-                        "bbox": det["bbox"],
-                        "landmarks": det["landmarks"],
-                        "lost": 0
-                    }
-            
-            # 2. Handle unmatched tracks (increment lost)
-            for tid_idx, tid in enumerate(track_ids):
-                if tid_idx not in matched_tracks:
-                    track = self.tracks[tid]
-                    track["lost"] += 1
-                    if track["lost"] <= self.max_lost:
-                        new_tracks[tid] = track
-            
-            # 3. Handle unmatched detections (new tracks)
-            for d_idx, det in enumerate(detections):
-                if d_idx not in matched_dets:
-                    new_tracks[self.next_id] = {
-                        "bbox": det["bbox"],
-                        "landmarks": det["landmarks"],
-                        "lost": 0
-                    }
-                    self.next_id += 1
         
         self.tracks = new_tracks
         
-        # Return format for pipeline
+        # Return currently visible tracks
         tracked_objects = []
         for tid, data in self.tracks.items():
             if data["lost"] == 0:
