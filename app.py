@@ -92,22 +92,29 @@ def main():
             # Process frame through pipeline
             tracked_objects, recognitions, confidences, raw_detections = pipeline.process_frame(frame, frame_count)
             
-            # Draw detections (includes RAW debug layer)
+            # Draw detections
             Helpers.draw_detections(frame, tracked_objects, recognitions, confidences, raw_detections)
             
             # Show output
-            cv2.imshow("AI Face Tracking System", frame)
-            
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            try:
+                cv2.imshow("AI Face Tracking System", frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            except cv2.error:
+                pass  # Headless environment — skip display
                 
     except KeyboardInterrupt:
         print("Interrupted by user.")
     except Exception as e:
+        import traceback
         print(f"Unexpected Runtime Error: {e}")
+        traceback.print_exc()
     finally:
         cap.release()
-        cv2.destroyAllWindows()
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
+            pass
         print("System shut down.")
 
 if __name__ == "__main__":
