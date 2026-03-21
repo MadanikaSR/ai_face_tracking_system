@@ -27,10 +27,10 @@ class Pipeline:
         self.event_manager = EventManager(self.db, self.logger)
         self.active_tracks = {} # track_id -> dict
         
-        # Settings - Polished for Absolute Stability
+        # Settings - Ultra Stability for Hackathon
         self.exit_timeout = self.config.get("exit_timeout_seconds", 30)
-        self.confirmation_frames = 5 # Require 5 stable frames for identity
-        self.min_emb_norm = 18.0 # Filter non-face objects
+        self.confirmation_frames = 8 # Extended temporal validation
+        self.min_emb_norm = 8.0 # Support for extreme partial/purdha faces
 
     def reset_system(self):
         self.logger.info("Resetting system data...")
@@ -43,9 +43,9 @@ class Pipeline:
 
     def process_frame(self, frame, frame_count):
         # 1. High Resolution Pre-Processing
-        h_orig, w_orig = frame.shape[:2]
         target_res = (1280, 720)
         det_frame = cv2.resize(frame, target_res, interpolation=cv2.INTER_LINEAR)
+        h_orig, w_orig = frame.shape[:2]
         h_det, w_det = det_frame.shape[:2]
         
         # 2. Detect & Track
@@ -97,23 +97,20 @@ class Pipeline:
                 face_id = track_info["face_id"]
                 sim = track_info["match_sim"]
             else:
-                # Require 2 frames before even attempting alignment/embedding
-                if track_info["detection_count"] >= 2:
+                # Capture Embeddings for voting
+                if track_info["detection_count"] >= 3: # Wait for track stability
                     x1, y1, x2, y2 = bbox
                     face_crop = frame[max(0, y1):y2, max(0, x1):x2]
                     aligned_face = align_face(frame, landmarks) if landmarks else cv2.resize(face_crop, (112, 112))
                     
                     if aligned_face is not None:
                         emb = self.recognizer.get_embedding(aligned_face)
-                        if emb is not None:
-                            # Quality Check: filter non-face blobs
-                            if np.linalg.norm(emb) > self.min_emb_norm:
-                                track_info["vote_embs"].append(emb)
+                        if emb is not None and np.linalg.norm(emb) > self.min_emb_norm:
+                            track_info["vote_embs"].append(emb)
                     
-                    # Confirm after 5 stable frames
+                    # Confirm after 8 stable frames
                     if len(track_info["vote_embs"]) >= self.confirmation_frames:
                         mean_emb = np.mean(track_info["vote_embs"], axis=0)
-                        # Use spatiotemporal bias (bbox) to prevent duplicate IDs
                         face_id, sim = self.identity_manager.match_or_register(mean_emb, ids_assigned_this_frame, current_bbox=bbox)
                         
                         track_info["face_id"] = face_id
@@ -125,7 +122,7 @@ class Pipeline:
                         if sim >= self.identity_manager.recognition_threshold:
                             self.logger.info(f"[RE-ID] Track {track_id} -> Face {face_id} (sim: {sim:.2f})")
                         else:
-                            self.logger.info(f"[NEW] Track {track_id} -> Registered as {face_id}")
+                            self.logger.info(f"[NEW] Track {track_id} -> New Face {face_id}")
                 
                 face_id = track_info["face_id"]
                 sim = track_info["match_sim"]
@@ -146,7 +143,6 @@ class Pipeline:
         for tid in exited_tracks:
             data = self.active_tracks.pop(tid)
             if data["confirmed"] and data["face_id"] != "Unknown":
-                # Cache exit for spatiotemporal re-id
                 self.identity_manager.add_exit_cache(data["face_id"], data["last_bbox"])
                 self.event_manager.log_exit(data["face_id"])
 

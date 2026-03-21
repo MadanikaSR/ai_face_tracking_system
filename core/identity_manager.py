@@ -8,8 +8,8 @@ class IdentityManager:
         self.config = config
         self.db = db
         self.recognizer = recognizer
-        self.recognition_threshold = self.config.get("recognition_threshold", 0.55)
-        self.max_gallery_size = 10
+        self.recognition_threshold = self.config.get("recognition_threshold", 0.68)
+        self.max_gallery_size = 12
         self.registered_faces = self._load_gallery()
         
         # Spatiotemporal Re-ID Cache

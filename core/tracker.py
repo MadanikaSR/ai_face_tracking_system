@@ -44,7 +44,7 @@ class FaceTracker:
                         best_iou = iou
                         best_det_idx = d_idx
                 
-                if best_iou > 0.3: # Match found
+                if best_iou > 0.5: # Strict match for separate identities
                     matched_tracks.add(tid)
                     matched_dets.add(best_det_idx)
                     new_tracks[tid] = {
