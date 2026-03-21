@@ -14,7 +14,6 @@ class Database:
     def _create_tables(self):
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            # faces table: id, first_seen, last_seen (Removed blob embedding from here)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS faces (
                     id TEXT PRIMARY KEY,
@@ -22,7 +21,6 @@ class Database:
                     last_seen TIMESTAMP
                 )
             ''')
-            # NEW face_embeddings table: id, face_id, embedding
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS face_embeddings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +29,6 @@ class Database:
                     FOREIGN KEY (face_id) REFERENCES faces (id)
                 )
             ''')
-            # events table: id, face_id, event_type, timestamp, image_path
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,52 +41,47 @@ class Database:
             ''')
             conn.commit()
 
-    def add_face(self, face_id, embedding):
-        """Adds a new face or updates an existing one with a new embedding."""
+    def add_face(self, face_id, embedding_bytes):
+        """Adds a new face and its first embedding."""
         now = datetime.now().isoformat()
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            # 1. Update faces table
             cursor.execute('''
                 INSERT INTO faces (id, first_seen, last_seen)
                 VALUES (?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen
             ''', (face_id, now, now))
             
-            # 2. Add embedding to gallery
-            cursor.execute('''
-                INSERT INTO face_embeddings (face_id, embedding)
-                VALUES (?, ?)
-            ''', (face_id, embedding))
+            # Check if this precise embedding already exists (deduplication)
+            cursor.execute("SELECT 1 FROM face_embeddings WHERE face_id = ? AND embedding = ?", (face_id, embedding_bytes))
+            if not cursor.fetchone():
+                cursor.execute('INSERT INTO face_embeddings (face_id, embedding) VALUES (?, ?)', (face_id, embedding_bytes))
             conn.commit()
 
-    def add_embedding(self, face_id, embedding):
-        """Adds an additional embedding to an existing face's gallery."""
+    def add_embedding(self, face_id, embedding_bytes):
+        """Adds an additional embedding to an existing face's gallery if it's new."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO face_embeddings (face_id, embedding)
-                VALUES (?, ?)
-            ''', (face_id, embedding))
+            cursor.execute("SELECT 1 FROM face_embeddings WHERE face_id = ? AND embedding = ?", (face_id, embedding_bytes))
+            if cursor.fetchone():
+                return
+            cursor.execute('INSERT INTO face_embeddings (face_id, embedding) VALUES (?, ?)', (face_id, embedding_bytes))
             conn.commit()
 
     def update_face_last_seen(self, face_id):
         now = datetime.now().isoformat()
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE faces SET last_seen = ? WHERE id = ?
-            ''', (now, face_id))
+            cursor.execute('UPDATE faces SET last_seen = ? WHERE id = ?', (now, face_id))
             conn.commit()
 
     def get_all_faces(self):
         """Returns a dict of face_id -> list of embeddings (numpy arrays)."""
+        if not os.path.exists(self.db_path): return {}
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            # Get all embeddings joined with their face_id
             cursor.execute('SELECT face_id, embedding FROM face_embeddings')
             rows = cursor.fetchall()
-            
             gallery = {}
             for face_id, emb_blob in rows:
                 if face_id not in gallery:
@@ -114,7 +106,7 @@ class Database:
             return cursor.fetchone()[0]
 
     def clear_data(self):
-        """Truncates all tables in the database."""
+        """Truncates all tables."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM events')

@@ -29,7 +29,7 @@ class SCRFD:
         img = np.expand_dims(img, axis=0)
         return img
 
-    def detect(self, img, conf_threshold=0.6):
+    def detect(self, img, conf_threshold=0.25):
         if self.session is None: return []
         
         h_orig, w_orig = img.shape[:2]

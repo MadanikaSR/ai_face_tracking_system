@@ -5,12 +5,20 @@ from datetime import datetime
 class Helpers:
     @staticmethod
     def save_crop(image, bbox, folder_path, face_id, event_type):
-        """Saves a cropped face image to the specified folder."""
+        """Saves a padded face crop to the specified folder."""
         x1, y1, x2, y2 = bbox
-        # Ensure bbox is within image boundaries
-        h, w, _ = image.shape
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
+        w, h = x2 - x1, y2 - y1
+        
+        # Add 20% padding
+        pad_x = int(w * 0.2)
+        pad_y = int(h * 0.2)
+        
+        # Apply padding and clamp to image boundaries
+        img_h, img_w, _ = image.shape
+        x1 = max(0, x1 - pad_x)
+        y1 = max(0, y1 - pad_y)
+        x2 = min(img_w, x2 + pad_x)
+        y2 = min(img_h, y2 + pad_y)
         
         crop = image[y1:y2, x1:x2]
         if crop.size == 0:
@@ -29,8 +37,17 @@ class Helpers:
         return file_path
 
     @staticmethod
-    def draw_detections(frame, tracked_objects, recognitions, confidences=None):
+    def draw_detections(frame, tracked_objects, recognitions, confidences=None, raw_detections=None):
         """Draws bounding boxes and labels on the frame."""
+        # 1. Draw Raw Detections in Red (Debug)
+        if raw_detections:
+            for det in raw_detections:
+                x1, y1, x2, y2 = det["bbox"]
+                conf = det["confidence"]
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 1)
+                cv2.putText(frame, f"{conf:.2f}", (x1, y2 + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+
+        # 2. Draw Tracked Objects in Green
         for obj in tracked_objects:
             bbox = obj["bbox"]
             track_id = obj["id"]

@@ -90,10 +90,10 @@ def main():
             frame_count += 1
             
             # Process frame through pipeline
-            tracked_objects, recognitions, confidences = pipeline.process_frame(frame, frame_count)
+            tracked_objects, recognitions, confidences, raw_detections = pipeline.process_frame(frame, frame_count)
             
-            # Draw detections
-            Helpers.draw_detections(frame, tracked_objects, recognitions, confidences)
+            # Draw detections (includes RAW debug layer)
+            Helpers.draw_detections(frame, tracked_objects, recognitions, confidences, raw_detections)
             
             # Show output
             cv2.imshow("AI Face Tracking System", frame)

@@ -4,7 +4,7 @@
     "video_path": "C:/Users/madan/Downloads/record_20250620_191230.mp4",
     "rtsp_url": "rtsp://localhost:8554/mystream",
     "reset_on_start": false,
-    "detection_frame_skip": 2,
-    "recognition_threshold": 0.6,
+    "detection_frame_skip": 1,
+    "recognition_threshold": 0.55,
     "exit_timeout_seconds": 30
 }
