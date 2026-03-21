@@ -30,7 +30,7 @@ class Pipeline:
 
     GHOST_TTL_SECONDS = 8       # How long to remember a lost identity's position
     GHOST_INHERIT_RADIUS = 130  # px — new track within this radius of ghost inherits ID
-    MIN_EMBEDDINGS_TO_REGISTER = 8  # Wait for N good embeddings before registering
+    MIN_EMBEDDINGS_TO_REGISTER = 5  # Wait for N good embeddings before registering
     OVERLAP_IOU_KILL = 0.45     # If two tracks overlap this much, one is a duplicate
 
     def __init__(self, config):

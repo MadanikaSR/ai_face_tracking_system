@@ -90,8 +90,9 @@ class SCRFD:
 
         if not all_bboxes: return []
         
-        # NMS
-        indices = cv2.dnn.NMSBoxes(all_bboxes, all_scores, threshold, 0.4)
+        # NMS — IoU 0.60: only suppress if faces overlap heavily (>60%)
+        # Higher = LESS aggressive = more faces kept for adjacent twins
+        indices = cv2.dnn.NMSBoxes(all_bboxes, all_scores, threshold, 0.60)
         
         results = []
         if len(indices) > 0:
