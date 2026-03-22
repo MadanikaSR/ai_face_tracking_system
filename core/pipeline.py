@@ -28,7 +28,7 @@ class Pipeline:
         4. Overlap merge: IoU > 0.45 → keep only one
     """
 
-    GHOST_TTL_SECONDS = 8       # How long to remember a lost identity's position
+    GHOST_TTL_SECONDS = 5       # Reduced from 8 — prevents stale ghost→duplicate re-registration
     GHOST_INHERIT_RADIUS = 130  # px — new track within this radius of ghost inherits ID
     MIN_EMBEDDINGS_TO_REGISTER = 5  # Wait for N good embeddings before registering
     OVERLAP_IOU_KILL = 0.45     # If two tracks overlap this much, one is a duplicate
@@ -159,13 +159,19 @@ class Pipeline:
                     continue  # Ghost expired
                 dist = self._get_center_dist(bbox, ghost_data["bbox"])
                 if dist <= self.GHOST_INHERIT_RADIUS:
-                    # Inherit ghost's identity
+                    # Inherit ghost's identity — permanently lock track to this face_id
                     rec["face_id"] = ghost_id
                     assigned_ids.add(ghost_id)
                     recognitions[tid] = ghost_id
                     confidences[tid] = 1.0
                     self.ghost_registry[ghost_id] = {"bbox": bbox, "timestamp": now_ts}
-                    self.logger.info(f"[GHOST-INHERIT] Track {tid} → {ghost_id}")
+                    self.logger.info(f"[GHOST-INHERIT] Track {tid} -> {ghost_id}")
+                    # CRITICAL BUG FIX: delete ghost immediately after claim.
+                    # Without this, every other new unrecognized track in the same scene
+                    # (within GHOST_INHERIT_RADIUS) also claims this ghost, causing a
+                    # cascade of 20+ tracks all inheriting the same face_id.
+                    # The claiming track re-populates the ghost via Rule 1 next frame.
+                    del self.ghost_registry[ghost_id]
                     inherited = True
                     break
 
@@ -181,9 +187,21 @@ class Pipeline:
                 aligned = cv2.resize(crop, (112, 112)) if crop.size > 0 else None
 
             if aligned is not None:
-                emb = self.recognizer.get_embedding(aligned)
-                if emb is not None:
-                    rec["vote_embs"].append(emb)
+                # Quality gate: only accumulate embeddings from sharp, large-enough crops.
+                # Blurry/tiny crops (purdha, partial face) are tracked but NOT registered
+                # to prevent incorrect DB entries.
+                x1_q, y1_q, x2_q, y2_q = bbox
+                crop_w, crop_h = x2_q - x1_q, y2_q - y1_q
+                crop = frame[max(0, y1_q):y2_q, max(0, x1_q):x2_q]
+                is_large_enough = crop_w >= 30 and crop_h >= 30
+                lap_var = cv2.Laplacian(
+                    cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY), cv2.CV_64F
+                ).var() if crop.size > 0 else 0
+                is_sharp = lap_var > 8.0  # Very lenient — only rejects truly blurred patches
+                if is_large_enough and is_sharp:
+                    emb = self.recognizer.get_embedding(aligned)
+                    if emb is not None:
+                        rec["vote_embs"].append(emb)
 
             # ── RULE 4: Register when enough embeddings collected ─────────────
             if len(rec["vote_embs"]) >= self.MIN_EMBEDDINGS_TO_REGISTER:

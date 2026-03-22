@@ -17,26 +17,31 @@ def save_config(config, config_path="config.json"):
         json.dump(config, f, indent=4)
 
 def get_input_source(config):
-    """Determines the cv2.VideoCapture source based on config."""
-    input_type = config.get("input_type", "webcam")
-    
+    """Determines the cv2.VideoCapture source based on config.
+    Supported modes: 'video' (file path) and 'rtsp' (RTSP URL).
+    Webcam mode has been removed.
+    """
+    input_type = config.get("input_type", "video")
+
     if input_type == "video":
-        source = config.get("video_path", "")
+        source = config.get("video_path", "").strip()
         if not os.path.exists(source):
-            print(f"Error: Video file not found at {source}")
+            print(f"Error: Video file not found at '{source}'")
             return None, input_type, source
         return source, input_type, source
-        
+
     elif input_type == "rtsp":
-        source = config.get("rtsp_url", "")
+        source = config.get("rtsp_url", "").strip()
         if not source:
-            print("Error: RTSP URL not provided in config.")
+            print("Error: RTSP URL is empty. Please provide a valid rtsp:// URL.")
             return None, input_type, source
+        if not source.lower().startswith("rtsp://"):
+            print(f"Warning: URL '{source}' does not look like an RTSP URL. Attempting anyway...")
         return source, input_type, source
-        
-    else: # Default to webcam
-        source = config.get("webcam_index", 0)
-        return source, input_type, f"Webcam {source}"
+
+    else:
+        print(f"Error: Unknown input_type '{input_type}'. Supported: 'video', 'rtsp'.")
+        return None, input_type, ""
 
 def main():
     # 1. Load current config
