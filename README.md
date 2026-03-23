@@ -1,6 +1,4 @@
-# 🎯 AI Face Tracking & Visitor Analytics System
-
-> **Hackathon Project** — Built for the [Katomaran Hackathon](https://katomaran.com)
+# 🎯 AI Assisted Face Tracking & Visitor Analytics System
 
 A production-grade, real-time face tracking and visitor analytics system. Detects, recognizes, and tracks faces from video files or live RTSP streams — assigning each unique person a persistent ID and logging every entry and exit event exactly once.
 
@@ -213,6 +211,13 @@ The Streamlit dashboard provides:
 
 ---
 
+## NOTE:
+
+Webcam input is supported at the backend level but is disabled in the UI for this implementation.This is because the webcam input was used 
+only for testing purposes at the initial stage of the project to ensure that multiple faces are detected in my own pc 
+
+---
+
 ## 📂 Sample Outputs
 
 * `logs/entries/` → entry images
@@ -231,3 +236,4 @@ The Streamlit dashboard provides:
 ## 📢 Hackathon Note
 
 This project is a part of a hackathon run by https://katomaran.com
+
