@@ -224,7 +224,7 @@ The Streamlit dashboard provides:
 
 ## 🎥 Demo
 
-👉 i have to add my demo link here
+👉 https://www.loom.com/share/40a729ec88764ad38503f75bfa2b86ca
 
 ---
 
